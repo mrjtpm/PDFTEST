@@ -1,0 +1,659 @@
+import React, { useState, useCallback } from 'react';
+import { Upload, Download, Settings, FileText, Trash2, X, Check, AlertCircle } from 'lucide-react';
+
+// Enhanced mock conversion function with better testing features
+const convertToPDF = async (file, options) => {
+  console.log(`Converting ${file.name} with options:`, options);
+  
+  // Simulate realistic processing time based on file size
+  const processingTime = Math.min(Math.max(file.size / 1000000 * 1000, 1500), 5000);
+  await new Promise(resolve => setTimeout(resolve, processingTime));
+  
+  // Simulate different outcomes based on file type
+  const fileExtension = file.name.split('.').pop().toLowerCase();
+  const isValidFile = ['ppt', 'pptx', 'key', 'pdf', 'odp', 'txt', 'html'].includes(fileExtension);
+  
+  if (!isValidFile) {
+    throw new Error(`Unsupported file type: ${fileExtension}`);
+  }
+  
+  // Simulate random pages based on file type
+  let pageCount;
+  if (fileExtension === 'txt' || fileExtension === 'html') {
+    pageCount = Math.floor(Math.random() * 5) + 1;
+  } else {
+    pageCount = Math.floor(Math.random() * 25) + 5; // 5-30 pages for presentations
+  }
+  
+  // Create a more realistic mock PDF with proper structure
+  const pdfContent = `%PDF-1.4
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+
+2 0 obj
+<<
+/Type /Pages
+/Kids [3 0 R]
+/Count ${pageCount}
+>>
+endobj
+
+3 0 obj
+<<
+/Type /Page
+/Parent 2 0 R
+/MediaBox [0 0 ${options.pageSize === 'A4' ? '595.276 841.890' : options.pageSize === 'Letter' ? '612 792' : '841.890 1190.551'}]
+/Contents 4 0 R
+>>
+endobj
+
+4 0 obj
+<<
+/Length 88
+>>
+stream
+BT
+/F1 12 Tf
+72 720 Td
+(Converted from ${file.name}) Tj
+0 -20 Td
+(Page Size: ${options.pageSize}) Tj
+0 -20 Td
+(Quality: ${options.quality}) Tj
+ET
+endstream
+endobj
+
+xref
+0 5
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000250 00000 n 
+trailer
+<<
+/Size 5
+/Root 1 0 R
+>>
+startxref
+400
+%%EOF`;
+  
+  return {
+    blob: new Blob([pdfContent], { type: 'application/pdf' }),
+    pages: pageCount
+  };
+};
+
+const FileUploadZone = ({ onFilesAdded, isProcessing }) => {
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    onFilesAdded(files);
+  }, [onFilesAdded]);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setIsDragOver(false);
+  }, []);
+
+  const handleFileInput = useCallback((e) => {
+    const files = Array.from(e.target.files);
+    onFilesAdded(files);
+    // Clear the input so the same file can be selected again
+    e.target.value = '';
+  }, [onFilesAdded]);
+
+  return (
+    <div
+      className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-all ${
+        isDragOver
+          ? 'border-blue-400 bg-blue-50'
+          : 'border-gray-300 hover:border-gray-400'
+      } ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+    >
+      <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+      <h3 className="text-lg font-medium text-gray-900 mb-2">
+        {isDragOver ? 'Drop files here!' : 'Drop your presentation files here'}
+      </h3>
+      <p className="text-gray-600 mb-4">
+        or click to browse and select files
+      </p>
+      <input
+        type="file"
+        multiple
+        accept=".ppt,.pptx,.key,.pdf,.odp,.txt,.html"
+        onChange={handleFileInput}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        disabled={isProcessing}
+      />
+      <div className="text-sm text-gray-500 mt-4">
+        <div className="font-medium mb-1">Supported formats:</div>
+        <div>PPT, PPTX, KEY, PDF, ODP, TXT, and HTML files</div>
+      </div>
+    </div>
+  );
+};
+
+const ConversionSettings = ({ options, onOptionsChange, isVisible, onToggle }) => {
+  return (
+    <div className="bg-white rounded-lg shadow-sm border">
+      <button
+        onClick={onToggle}
+        className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <Settings className="h-5 w-5 text-gray-500" />
+          <span className="font-medium text-gray-900">Conversion Settings</span>
+          <span className="text-sm text-gray-500">
+            ({options.pageSize}, {options.quality} quality, {options.pageSeparation})
+          </span>
+        </div>
+        <div className={`transition-transform ${isVisible ? 'rotate-180' : ''}`}>
+          ↓
+        </div>
+      </button>
+      
+      {isVisible && (
+        <div className="px-6 pb-6 border-t border-gray-100">
+          <div className="space-y-6">
+            {/* PDF Page Size */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                PDF Page Size
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { value: 'A4', label: 'A4 (210×297mm)' },
+                  { value: 'Letter', label: 'Letter (8.5×11")' },
+                  { value: 'A3', label: 'A3 (297×420mm)' },
+                  { value: 'Legal', label: 'Legal (8.5×14")' }
+                ].map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => onOptionsChange({ ...options, pageSize: value })}
+                    className={`px-4 py-3 rounded-md border text-sm font-medium transition-colors ${
+                      options.pageSize === value
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                        : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* PDF Quality */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                PDF Quality
+              </label>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { value: 'high', label: 'High Quality', desc: '(Best, slower)' },
+                  { value: 'medium', label: 'Medium', desc: '(Balanced)' },
+                  { value: 'low', label: 'Low Quality', desc: '(Faster)' }
+                ].map(({ value, label, desc }) => (
+                  <button
+                    key={value}
+                    onClick={() => onOptionsChange({ ...options, quality: value })}
+                    className={`px-4 py-3 rounded-md border text-sm font-medium transition-colors ${
+                      options.quality === value
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                        : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div>{label}</div>
+                    <div className="text-xs opacity-75">{desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Page Separation */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Page Separation Options
+              </label>
+              <div className="space-y-3">
+                <label className="flex items-start p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="pageSeparation"
+                    checked={options.pageSeparation === 'single'}
+                    onChange={() => onOptionsChange({ ...options, pageSeparation: 'single' })}
+                    className="mt-1 mr-3 h-4 w-4 text-blue-600"
+                  />
+                  <div>
+                    <div className="font-medium text-sm text-gray-900">Single PDF file</div>
+                    <div className="text-sm text-gray-500">All slides in one document</div>
+                  </div>
+                </label>
+                <label className="flex items-start p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="pageSeparation"
+                    checked={options.pageSeparation === 'separate'}
+                    onChange={() => onOptionsChange({ ...options, pageSeparation: 'separate' })}
+                    className="mt-1 mr-3 h-4 w-4 text-blue-600"
+                  />
+                  <div>
+                    <div className="font-medium text-sm text-gray-900">Separate PDF files</div>
+                    <div className="text-sm text-gray-500">One PDF per slide (demo: max 3 files)</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Orientation */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Page Orientation
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { value: 'portrait', label: 'Portrait', desc: 'Tall pages' },
+                  { value: 'landscape', label: 'Landscape', desc: 'Wide pages' }
+                ].map(({ value, label, desc }) => (
+                  <button
+                    key={value}
+                    onClick={() => onOptionsChange({ ...options, orientation: value })}
+                    className={`px-4 py-3 rounded-md border text-sm font-medium transition-colors ${
+                      options.orientation === value
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                        : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div>{label}</div>
+                    <div className="text-xs opacity-75">{desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const FileList = ({ files, onDownload, onRemove, onClearAll }) => {
+  if (files.length === 0) return null;
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'completed':
+        return <Check className="h-4 w-4 text-green-500" />;
+      case 'processing':
+        return <div className="h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />;
+      case 'error':
+        return <AlertCircle className="h-4 w-4 text-red-500" />;
+      default:
+        return <div className="h-4 w-4" />;
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'completed':
+        return 'text-green-600';
+      case 'processing':
+        return 'text-blue-600';
+      case 'error':
+        return 'text-red-600';
+      default:
+        return 'text-gray-500';
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border">
+      <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+        <h3 className="font-medium text-gray-900">
+          Files ({files.length})
+        </h3>
+        {files.length > 0 && (
+          <button
+            onClick={onClearAll}
+            className="text-sm text-gray-500 hover:text-red-600 transition-colors flex items-center gap-1"
+          >
+            <Trash2 className="h-4 w-4" />
+            Clear All
+          </button>
+        )}
+      </div>
+      <div className="divide-y divide-gray-100">
+        {files.map((file) => (
+          <div key={file.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <FileText className="h-5 w-5 text-gray-400 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-gray-900 truncate">{file.name}</p>
+                <div className="flex items-center gap-4 text-sm text-gray-500">
+                  <span>{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                  {file.pages && (
+                    <span>• {file.pages} pages</span>
+                  )}
+                  {file.status === 'error' && file.error && (
+                    <span className="text-red-600">• {file.error}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                {getStatusIcon(file.status)}
+                <span className={`text-sm capitalize ${getStatusColor(file.status)}`}>
+                  {file.status}
+                </span>
+              </div>
+              {file.status === 'completed' && (
+                <button
+                  onClick={() => onDownload(file)}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Download
+                </button>
+              )}
+              <button
+                onClick={() => onRemove(file.id)}
+                className="text-gray-400 hover:text-red-600 transition-colors p-1"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const StatsBar = ({ totalFiles, completedFiles, totalDownloads, processingTime }) => {
+  const successRate = totalFiles > 0 ? Math.round((completedFiles / totalFiles) * 100) : 0;
+  
+  return (
+    <div className="bg-white rounded-lg shadow-sm border p-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-gray-900">{totalFiles}</div>
+          <div className="text-sm text-gray-600">Files Uploaded</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-green-600">{completedFiles}</div>
+          <div className="text-sm text-gray-600">Completed</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-blue-600">{totalDownloads}</div>
+          <div className="text-sm text-gray-600">Downloads</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-purple-600">{processingTime}s</div>
+          <div className="text-sm text-gray-600">Processing Time</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-orange-600">{successRate}%</div>
+          <div className="text-sm text-gray-600">Success Rate</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Header = () => {
+  return (
+    <header className="bg-white shadow-sm border-b border-gray-200">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <FileText className="h-8 w-8 text-blue-600" />
+            <h1 className="text-2xl font-bold text-gray-900">PDF Converter</h1>
+          </div>
+          <div className="text-sm text-gray-500 hidden sm:block">
+            Convert presentations to high-quality PDFs
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+};
+
+// Enhanced custom hook for file conversion logic
+const useFileConverter = () => {
+  const [files, setFiles] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [totalDownloads, setTotalDownloads] = useState(0);
+  const [processingTime, setProcessingTime] = useState(0);
+  const [conversionOptions, setConversionOptions] = useState({
+    pageSize: 'A4',
+    quality: 'high',
+    pageSeparation: 'single',
+    orientation: 'portrait'
+  });
+
+  const addFiles = useCallback(async (newFiles) => {
+    if (newFiles.length === 0) return;
+    
+    setIsProcessing(true);
+    const startTime = Date.now();
+
+    const fileObjects = newFiles.map((file) => ({
+      id: Math.random().toString(36).substr(2, 9),
+      name: file.name,
+      size: file.size,
+      file: file,
+      status: 'processing',
+      pages: null,
+      convertedBlob: null,
+      error: null
+    }));
+
+    setFiles(prev => [...prev, ...fileObjects]);
+
+    // Process each file
+    for (const fileObj of fileObjects) {
+      try {
+        const result = await convertToPDF(fileObj.file, conversionOptions);
+        
+        setFiles(prev => prev.map(f => 
+          f.id === fileObj.id 
+            ? { 
+                ...f, 
+                status: 'completed', 
+                pages: result.pages, 
+                convertedBlob: result.blob,
+                error: null
+              }
+            : f
+        ));
+      } catch (error) {
+        console.error('Conversion error:', error);
+        setFiles(prev => prev.map(f => 
+          f.id === fileObj.id 
+            ? { ...f, status: 'error', error: error.message }
+            : f
+        ));
+      }
+    }
+
+    const endTime = Date.now();
+    setProcessingTime(prev => prev + Math.round((endTime - startTime) / 1000));
+    setIsProcessing(false);
+  }, [conversionOptions]);
+
+  const downloadFile = useCallback((file) => {
+    if (!file.convertedBlob) return;
+    
+    console.log('Downloading file with options:', conversionOptions);
+    
+    // Handle different download scenarios based on settings
+    if (conversionOptions.pageSeparation === 'separate' && file.pages > 1) {
+      // Create separate downloads for each page (limited to 5 for demo)
+      const maxPages = Math.min(file.pages, 5);
+      
+      for (let i = 1; i <= maxPages; i++) {
+        setTimeout(() => {
+          const url = URL.createObjectURL(file.convertedBlob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${file.name.split('.')[0]}_page_${i}_${conversionOptions.pageSize.toLowerCase()}_${conversionOptions.orientation}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }, i * 300); // Stagger downloads slightly
+      }
+      
+      setTotalDownloads(prev => prev + maxPages);
+    } else {
+      // Single file download
+      const url = URL.createObjectURL(file.convertedBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${file.name.split('.')[0]}_${conversionOptions.pageSize.toLowerCase()}_${conversionOptions.orientation}_${conversionOptions.quality}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setTotalDownloads(prev => prev + 1);
+    }
+  }, [conversionOptions]);
+
+  const removeFile = useCallback((fileId) => {
+    setFiles(prev => prev.filter(f => f.id !== fileId));
+  }, []);
+
+  const clearAllFiles = useCallback(() => {
+    setFiles([]);
+    setTotalDownloads(0);
+    setProcessingTime(0);
+  }, []);
+
+  const completedFiles = files.filter(f => f.status === 'completed').length;
+
+  return {
+    files,
+    isProcessing,
+    totalDownloads,
+    completedFiles,
+    processingTime,
+    conversionOptions,
+    setConversionOptions,
+    addFiles,
+    downloadFile,
+    removeFile,
+    clearAllFiles,
+  };
+};
+
+// Main App Component
+function App() {
+  const [showSettings, setShowSettings] = useState(false);
+  const {
+    files,
+    isProcessing,
+    totalDownloads,
+    completedFiles,
+    processingTime,
+    conversionOptions,
+    setConversionOptions,
+    addFiles,
+    downloadFile,
+    removeFile,
+    clearAllFiles,
+  } = useFileConverter();
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50">
+      <Header />
+     
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-8">
+          {/* Upload Zone */}
+          <section>
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">
+                Convert Presentations to A4 PDF
+              </h2>
+              <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+                Transform your PowerPoint, Keynote, and other presentation files into
+                high-quality A4 PDFs with proper page separation.
+              </p>
+              <div className="mt-6 p-4 bg-blue-50 rounded-lg max-w-lg mx-auto border border-blue-200">
+                <p className="text-sm text-blue-800">
+                  <strong>🧪 Try it out:</strong> Upload any file to test the conversion process! 
+                  The demo will simulate processing and create downloadable PDFs.
+                </p>
+              </div>
+            </div>
+           
+            <FileUploadZone
+              onFilesAdded={addFiles}
+              isProcessing={isProcessing}
+            />
+          </section>
+
+          {/* Settings */}
+          <section className="max-w-2xl mx-auto">
+            <ConversionSettings
+              options={conversionOptions}
+              onOptionsChange={setConversionOptions}
+              isVisible={showSettings}
+              onToggle={() => setShowSettings(!showSettings)}
+            />
+          </section>
+
+          {/* Stats */}
+          {files.length > 0 && (
+            <StatsBar
+              totalFiles={files.length}
+              completedFiles={completedFiles}
+              totalDownloads={totalDownloads}
+              processingTime={processingTime}
+            />
+          )}
+
+          {/* File List */}
+          <section>
+            <FileList
+              files={files}
+              onDownload={downloadFile}
+              onRemove={removeFile}
+              onClearAll={clearAllFiles}
+            />
+          </section>
+
+          {/* Footer */}
+          <footer className="text-center py-8 border-t border-gray-200 mt-16">
+            <div className="text-sm text-gray-500 space-y-2">
+              <p>Supports PPT, PPTX, KEY, PDF, ODP, TXT, and HTML files</p>
+              <p>Your files are processed securely and never stored permanently</p>
+              <p>Default output: A4 size with proper page separation • This is a demo version</p>
+            </div>
+          </footer>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default App;
+
+
